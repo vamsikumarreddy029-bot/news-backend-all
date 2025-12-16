@@ -39,14 +39,18 @@ function makeHash(t, s) {
 app.post("/api/news/raw", (req, res) => {
   const { title, summary, category } = req.body;
 
-  if (!title || !summary || summary.length < 40) {
-    return res.json({ skipped: true });
+  if (!title || !summary || summary.length < 60) {
+    return res.json({ skipped: "short" });
   }
 
   const t = clean(title);
   const s = clean(summary);
 
-  if (s === t) return res.json({ skipped: true });
+  if (s === t) return res.json({ skipped: "title-copy" });
+
+  if (s.includes("ఆంధ్రప్రదేశ్‌లో వెలుగులోకి వచ్చాయి")) {
+    return res.json({ skipped: "generic-summary" });
+  }
 
   const hash = makeHash(t, s);
 
@@ -68,13 +72,10 @@ app.get("/api/feed", (req, res) => {
      WHERE createdAt > ?
      ORDER BY id DESC
      LIMIT 100`,
-    [Date.now() - 30 * 60 * 60 * 1000], // 30 hours
+    [Date.now() - 30 * 60 * 60 * 1000],
     (_, rows) => res.json(rows)
   );
 });
-if (summary.includes("ఆంధ్రప్రదేశ్‌లో వెలుగులోకి వచ్చాయి")) {
-  return res.json({ skipped: "generic-summary" });
-}
 
 /* ================= START ================= */
 
@@ -82,4 +83,3 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () =>
   console.log("✅ news-backend-all running on", PORT)
 );
-

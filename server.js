@@ -9,42 +9,45 @@ app.use(express.json());
 
 const db = new sqlite3.Database("./news.db");
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS news (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT,
-      summary TEXT,
-      category TEXT,
-      hash TEXT UNIQUE,
-      createdAt INTEGER
-    )
-  `);
-});
+db.run(`
+CREATE TABLE IF NOT EXISTS news (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT,
+  summary TEXT,
+  category TEXT,
+  hash TEXT UNIQUE,
+  createdAt INTEGER
+)`);
 
-const hash = (t, s) =>
+const makeHash = (t, s) =>
   crypto.createHash("sha1").update(t + s).digest("hex");
 
+/* ===== INGEST ===== */
 app.post("/api/news/raw", (req, res) => {
   const { title, summary, category } = req.body;
-  const h = hash(title, summary);
+  if (!title || !summary) return res.json({ skip: true });
+
+  const hash = makeHash(title, summary);
 
   db.run(
     `INSERT OR IGNORE INTO news VALUES (NULL,?,?,?,?,?)`,
-    [title, summary, category, h, Date.now()],
-    () => res.json({ ok: true })
+    [title, summary, category, hash, Date.now()],
+    () => res.json({ saved: true })
   );
 });
 
+/* ===== FEED ===== */
 app.get("/api/feed", (_, res) => {
   db.all(
     `SELECT title,summary,category,createdAt FROM news
-     WHERE createdAt > ? ORDER BY createdAt DESC`,
+     WHERE createdAt > ?
+     ORDER BY createdAt DESC`,
     [Date.now() - 30 * 60 * 60 * 1000],
     (_, rows) => res.json(rows)
   );
 });
 
+/* ===== ADMIN ===== */
 app.delete("/api/admin/delete/:id", (req, res) => {
   db.run(`DELETE FROM news WHERE id=?`, [req.params.id], () =>
     res.json({ deleted: true })
@@ -61,5 +64,5 @@ app.put("/api/admin/edit/:id", (req, res) => {
 });
 
 app.listen(process.env.PORT || 8080, () =>
-  console.log("✅ Backend running")
+  console.log("✅ Backend running clean")
 );

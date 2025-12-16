@@ -1,7 +1,7 @@
 import express from "express";
 import sqlite3 from "sqlite3";
-import cors from "cors";
 import crypto from "crypto";
+import cors from "cors";
 
 const app = express();
 app.use(cors());
@@ -26,11 +26,8 @@ db.serialize(() => {
 
 /* ================= HELPERS ================= */
 
-function cleanText(t = "") {
-  return t
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function clean(t = "") {
+  return t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 }
 
 function makeHash(t, s) {
@@ -41,16 +38,21 @@ function makeHash(t, s) {
 
 app.post("/api/news/raw", (req, res) => {
   const { title, summary, category } = req.body;
-  if (!title || !summary || !category) {
-    return res.json({ skip: true });
+
+  if (!title || !summary || summary.length < 40) {
+    return res.json({ skipped: true });
   }
 
-  const t = cleanText(title);
-  const s = cleanText(summary);
+  const t = clean(title);
+  const s = clean(summary);
+
+  if (s === t) return res.json({ skipped: true });
+
   const hash = makeHash(t, s);
 
   db.run(
-    `INSERT OR IGNORE INTO news (title, summary, category, hash, createdAt)
+    `INSERT OR IGNORE INTO news
+     (title, summary, category, hash, createdAt)
      VALUES (?, ?, ?, ?, ?)`,
     [t, s, category, hash, Date.now()],
     () => res.json({ saved: true })
@@ -64,26 +66,10 @@ app.get("/api/feed", (req, res) => {
     `SELECT title, summary, category, createdAt
      FROM news
      WHERE createdAt > ?
-     ORDER BY createdAt DESC`,
+     ORDER BY id DESC
+     LIMIT 100`,
     [Date.now() - 30 * 60 * 60 * 1000], // 30 hours
     (_, rows) => res.json(rows)
-  );
-});
-
-/* ================= ADMIN ================= */
-
-app.delete("/api/admin/delete/:id", (req, res) => {
-  db.run(`DELETE FROM news WHERE id=?`, [req.params.id], () =>
-    res.json({ deleted: true })
-  );
-});
-
-app.put("/api/admin/edit/:id", (req, res) => {
-  const { title, summary, category } = req.body;
-  db.run(
-    `UPDATE news SET title=?, summary=?, category=? WHERE id=?`,
-    [title, summary, category, req.params.id],
-    () => res.json({ updated: true })
   );
 });
 

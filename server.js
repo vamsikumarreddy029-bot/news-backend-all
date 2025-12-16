@@ -72,6 +72,9 @@ app.get("/api/feed", (req, res) => {
     (_, rows) => res.json(rows)
   );
 });
+if (summary.includes("ఆంధ్రప్రదేశ్‌లో వెలుగులోకి వచ్చాయి")) {
+  return res.json({ skipped: "generic-summary" });
+}
 
 /* ================= START ================= */
 
@@ -79,3 +82,4 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () =>
   console.log("✅ news-backend-all running on", PORT)
 );
+

@@ -27,7 +27,11 @@ db.serialize(() => {
 /* ================= HELPERS ================= */
 
 function clean(t = "") {
-  return t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return t
+    .replace(/<[^>]+>/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function makeHash(t, s) {
@@ -39,23 +43,43 @@ function makeHash(t, s) {
 app.post("/api/news/raw", (req, res) => {
   const { title, summary, category } = req.body;
 
-  if (!title || !summary || summary.length < 40) {
-    return res.json({ skipped: true });
+  // 1️⃣ Basic validation
+  if (!title || !summary || summary.length < 60) {
+    return res.json({ skipped: "short-or-empty" });
   }
 
   const t = clean(title);
   const s = clean(summary);
 
-  if (s === t) return res.json({ skipped: true });
+  // 2️⃣ Title copy check
+  if (s === t) {
+    return res.json({ skipped: "title-copy" });
+  }
 
+  // 3️⃣ Generic fake-summary block (VERY IMPORTANT)
+  if (
+    s.includes("ఈ ఘటనకు సంబంధించిన తాజా పరిణామాలు") ||
+    s.includes("వెలుగులోకి వచ్చాయి") ||
+    s.includes("పూర్తి వివరాలు త్వరలో") ||
+    s.includes("అధికారులు స్పందించారు")
+  ) {
+    return res.json({ skipped: "generic-summary" });
+  }
+
+  // 4️⃣ Hash duplicate protection
   const hash = makeHash(t, s);
 
   db.run(
     `INSERT OR IGNORE INTO news
      (title, summary, category, hash, createdAt)
      VALUES (?, ?, ?, ?, ?)`,
-    [t, s, category, hash, Date.now()],
-    () => res.json({ saved: true })
+    [t, s, category || "State", hash, Date.now()],
+    function () {
+      if (this.changes === 0) {
+        return res.json({ skipped: "duplicate" });
+      }
+      return res.json({ saved: true });
+    }
   );
 });
 
@@ -68,7 +92,7 @@ app.get("/api/feed", (req, res) => {
      WHERE createdAt > ?
      ORDER BY id DESC
      LIMIT 100`,
-    [Date.now() - 30 * 60 * 60 * 1000], // 30 hours
+    [Date.now() - 30 * 60 * 60 * 1000], // ⏱️ auto-delete after 30 hours
     (_, rows) => res.json(rows)
   );
 });
@@ -76,7 +100,6 @@ app.get("/api/feed", (req, res) => {
 /* ================= START ================= */
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, "0.0.0.0", () =>
-  console.log("✅ news-backend-all running on", PORT)
-);
-
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("✅ news-backend-all running on", PORT);
+});

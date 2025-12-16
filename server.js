@@ -38,42 +38,41 @@ function makeHash(t, s) {
   return crypto.createHash("sha1").update(t + s).digest("hex");
 }
 
+function isGeneric(summary) {
+  return /ఈ ఘటనకు సంబంధించిన తాజా పరిణామాలు/.test(summary);
+}
+
 /* ================= INGEST ================= */
 
 app.post("/api/news/raw", (req, res) => {
-  const { title, summary, category } = req.body;
+  let { title, summary, category } = req.body;
 
-  // 1️⃣ Basic validation
-  if (!title || !summary || summary.length < 60) {
-    return res.json({ skipped: "short-or-empty" });
+  if (!title || !summary) {
+    return res.json({ skipped: "missing" });
   }
 
-  const t = clean(title);
-  const s = clean(summary);
+  title = clean(title);
+  summary = clean(summary);
 
-  // 2️⃣ Title copy check
-  if (s === t) {
-    return res.json({ skipped: "title-copy" });
+  if (summary.length < 60) {
+    return res.json({ skipped: "too-short" });
   }
 
-  // 3️⃣ Generic fake-summary block (VERY IMPORTANT)
-  if (
-    s.includes("ఈ ఘటనకు సంబంధించిన తాజా పరిణామాలు") ||
-    s.includes("వెలుగులోకి వచ్చాయి") ||
-    s.includes("పూర్తి వివరాలు త్వరలో") ||
-    s.includes("అధికారులు స్పందించారు")
-  ) {
+  if (summary === title) {
+    return res.json({ skipped: "same-as-title" });
+  }
+
+  if (isGeneric(summary)) {
     return res.json({ skipped: "generic-summary" });
   }
 
-  // 4️⃣ Hash duplicate protection
-  const hash = makeHash(t, s);
+  const hash = makeHash(title, summary);
 
   db.run(
     `INSERT OR IGNORE INTO news
      (title, summary, category, hash, createdAt)
      VALUES (?, ?, ?, ?, ?)`,
-    [t, s, category || "State", hash, Date.now()],
+    [title, summary, category || "State", hash, Date.now()],
     function () {
       if (this.changes === 0) {
         return res.json({ skipped: "duplicate" });
@@ -90,11 +89,17 @@ app.get("/api/feed", (req, res) => {
     `SELECT title, summary, category, createdAt
      FROM news
      WHERE createdAt > ?
-     ORDER BY id DESC
+     ORDER BY createdAt DESC
      LIMIT 100`,
-    [Date.now() - 30 * 60 * 60 * 1000], // ⏱️ auto-delete after 30 hours
+    [Date.now() - 30 * 60 * 60 * 1000],
     (_, rows) => res.json(rows)
   );
+});
+
+/* ================= HEALTH ================= */
+
+app.get("/", (_, res) => {
+  res.send("OK");
 });
 
 /* ================= START ================= */

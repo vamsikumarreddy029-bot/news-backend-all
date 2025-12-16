@@ -2,28 +2,22 @@ import express from "express";
 import sqlite3 from "sqlite3";
 import cors from "cors";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-
-/* ================= APP ================= */
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* ================= DB (Railway-safe) ================= */
+/* ================= DB ================= */
 
-// Railway filesystem is ephemeral — this is OK
-const DB_PATH = path.join(process.cwd(), "news.db");
-
-const db = new sqlite3.Database(DB_PATH);
+const db = new sqlite3.Database("./news.db");
 
 db.serialize(() => {
   db.run(`
-    CREATE TABLE IF NOT EXISTS raw_posts (
+    CREATE TABLE IF NOT EXISTS news (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT,
       summary TEXT,
+      category TEXT,
       hash TEXT UNIQUE,
       createdAt TEXT
     )
@@ -32,50 +26,46 @@ db.serialize(() => {
 
 /* ================= HELPERS ================= */
 
-function cleanText(text = "") {
-  return text
+function cleanText(t = "") {
+  return t
     .replace(/<[^>]+>/g, " ")
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function makeHash(title, summary) {
-  return crypto
-    .createHash("sha1")
-    .update(title + summary)
-    .digest("hex");
-}
+function normalizeSummary(summary = "") {
+  const lines = summary
+    .split("\n")
+    .map(l => l.trim())
+    .filter(Boolean);
 
-/* ================= HEALTH ================= */
-
-app.get("/", (req, res) => {
-  res.send("✅ news-backend-all API running");
-});
-
-/* ================= INGEST (FROM WORKER) ================= */
-
-app.post("/api/news/raw", (req, res) => {
-  const { title, summary } = req.body;
-
-  if (!title || !summary) {
-    return res.json({ skip: true });
+  while (lines.length < 5) {
+    lines.push(lines[lines.length - 1] || "");
   }
 
+  return lines.slice(0, 5).join("\n");
+}
+
+function makeHash(t, s) {
+  return crypto.createHash("sha1").update(t + s).digest("hex");
+}
+
+/* ================= INGEST ================= */
+
+app.post("/api/news/raw", (req, res) => {
+  const { title, summary, category } = req.body;
+  if (!title || !summary) return res.json({ skip: true });
+
   const t = cleanText(title);
-  const s = cleanText(summary);
+  const s = normalizeSummary(cleanText(summary));
   const hash = makeHash(t, s);
 
   db.run(
-    `
-    INSERT OR IGNORE INTO raw_posts
-    (title, summary, hash, createdAt)
-    VALUES (?, ?, ?, ?)
-    `,
-    [t, s, hash, new Date().toISOString()],
-    function () {
-      res.json({ saved: this.changes === 1 });
-    }
+    `INSERT OR IGNORE INTO news (title, summary, category, hash, createdAt)
+     VALUES (?, ?, ?, ?, ?)`,
+    [t, s, category || "State", hash, new Date().toISOString()],
+    () => res.json({ saved: true })
   );
 });
 
@@ -83,24 +73,18 @@ app.post("/api/news/raw", (req, res) => {
 
 app.get("/api/feed", (req, res) => {
   db.all(
-    `
-    SELECT title, summary, createdAt
-    FROM raw_posts
-    ORDER BY id DESC
-    LIMIT 100
-    `,
+    `SELECT title, summary, category, createdAt
+     FROM news
+     ORDER BY id DESC
+     LIMIT 100`,
     [],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
+    (_, rows) => res.json(rows)
   );
 });
 
 /* ================= START ================= */
 
 const PORT = process.env.PORT || 8081;
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ news-backend-all running on port ${PORT}`);
-});
+app.listen(PORT, "0.0.0.0", () =>
+  console.log("✅ news-backend-all running on", PORT)
+);

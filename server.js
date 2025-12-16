@@ -38,46 +38,36 @@ function makeHash(t, s) {
   return crypto.createHash("sha1").update(t + s).digest("hex");
 }
 
-function isGeneric(summary) {
-  return /ఈ ఘటనకు సంబంధించిన తాజా పరిణామాలు/.test(summary);
-}
-
 /* ================= INGEST ================= */
 
 app.post("/api/news/raw", (req, res) => {
-  let { title, summary, category } = req.body;
+  const { title, summary, category } = req.body;
 
+  // 🔥 RELAXED RULES (OPTION A)
   if (!title || !summary) {
     return res.json({ skipped: "missing" });
   }
 
-  title = clean(title);
-  summary = clean(summary);
+  const t = clean(title);
+  const s = clean(summary);
 
-  if (summary.length < 60) {
-    return res.json({ skipped: "too-short" });
-  }
-
-  if (summary === title) {
+  // ❌ Only block if EXACT copy
+  if (s === t) {
     return res.json({ skipped: "same-as-title" });
   }
 
-  if (isGeneric(summary)) {
-    return res.json({ skipped: "generic-summary" });
-  }
-
-  const hash = makeHash(title, summary);
+  const hash = makeHash(t, s);
 
   db.run(
     `INSERT OR IGNORE INTO news
      (title, summary, category, hash, createdAt)
      VALUES (?, ?, ?, ?, ?)`,
-    [title, summary, category || "State", hash, Date.now()],
+    [t, s, category || "State", hash, Date.now()],
     function () {
       if (this.changes === 0) {
         return res.json({ skipped: "duplicate" });
       }
-      return res.json({ saved: true });
+      res.json({ saved: true });
     }
   );
 });
@@ -89,22 +79,16 @@ app.get("/api/feed", (req, res) => {
     `SELECT title, summary, category, createdAt
      FROM news
      WHERE createdAt > ?
-     ORDER BY createdAt DESC
+     ORDER BY id DESC
      LIMIT 100`,
-    [Date.now() - 30 * 60 * 60 * 1000],
+    [Date.now() - 30 * 60 * 60 * 1000], // 30 hours
     (_, rows) => res.json(rows)
   );
-});
-
-/* ================= HEALTH ================= */
-
-app.get("/", (_, res) => {
-  res.send("OK");
 });
 
 /* ================= START ================= */
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("✅ news-backend-all running on", PORT);
-});
+app.listen(PORT, "0.0.0.0", () =>
+  console.log("✅ Backend running on", PORT)
+);

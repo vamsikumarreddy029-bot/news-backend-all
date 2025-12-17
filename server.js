@@ -74,6 +74,11 @@ app.get("/api/feed", (req, res) => {
     (_, rows) => res.json(rows)
   );
 });
+app.delete("/api/clear", (req, res) => {
+  db.run("DELETE FROM news", () => {
+    res.json({ cleared: true });
+  });
+});
 
 /* ================= START ================= */
 
@@ -81,3 +86,4 @@ const PORT = process.env.PORT || 8081;
 app.listen(PORT, "0.0.0.0", () =>
   console.log("✅ backend running on", PORT)
 );
+

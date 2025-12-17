@@ -56,10 +56,7 @@ app.post("/api/news/raw", (req, res) => {
      (title, summary, category, hash, createdAt)
      VALUES (?, ?, ?, ?, ?)`,
     [t, s, category || "State", hash, Date.now()],
-    err => {
-      if (err) return res.json({ saved: false });
-      res.json({ saved: true });
-    }
+    () => res.json({ saved: true })
   );
 });
 
@@ -74,16 +71,22 @@ app.get("/api/feed", (req, res) => {
     (_, rows) => res.json(rows)
   );
 });
-app.delete("/api/clear", (req, res) => {
-  db.run("DELETE FROM news", () => {
-    res.json({ cleared: true });
+
+/* ================= TEMP DB CLEAR (USE ONCE) ================= */
+
+// ⚠️ REMOVE AFTER USING ONCE
+app.get("/api/clear-db", (req, res) => {
+  db.run("DELETE FROM news", err => {
+    if (err) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+    res.json({ ok: true, message: "News table cleared" });
   });
 });
 
 /* ================= START ================= */
 
-const PORT = process.env.PORT || 8081;
+const PORT = process.env.PORT || 5051;
 app.listen(PORT, "0.0.0.0", () =>
   console.log("✅ backend running on", PORT)
 );
-

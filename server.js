@@ -49,7 +49,6 @@ app.post("/api/news/raw", (req, res) => {
 
   const t = clean(title);
   const s = clean(summary);
-
   const hash = makeHash(t, s);
 
   db.run(
@@ -58,10 +57,7 @@ app.post("/api/news/raw", (req, res) => {
      VALUES (?, ?, ?, ?, ?)`,
     [t, s, category || "State", hash, Date.now()],
     err => {
-      if (err) {
-        console.error(err);
-        return res.json({ saved: false });
-      }
+      if (err) return res.json({ saved: false });
       res.json({ saved: true });
     }
   );
@@ -81,7 +77,7 @@ app.get("/api/feed", (req, res) => {
 
 /* ================= START ================= */
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8081;
 app.listen(PORT, "0.0.0.0", () =>
   console.log("✅ backend running on", PORT)
 );

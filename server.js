@@ -43,14 +43,12 @@ function makeHash(t, s) {
 app.post("/api/news/raw", (req, res) => {
   const { title, summary, category } = req.body;
 
-  if (!title || !summary || summary.length < 40) {
+  if (!title || !summary) {
     return res.json({ skipped: true });
   }
 
   const t = clean(title);
   const s = clean(summary);
-
-  if (t === s) return res.json({ skipped: true });
 
   const hash = makeHash(t, s);
 
@@ -58,36 +56,32 @@ app.post("/api/news/raw", (req, res) => {
     `INSERT OR IGNORE INTO news
      (title, summary, category, hash, createdAt)
      VALUES (?, ?, ?, ?, ?)`,
-    [t, s, category, hash, Date.now()],
-    () => res.json({ saved: true })
+    [t, s, category || "State", hash, Date.now()],
+    err => {
+      if (err) {
+        console.error(err);
+        return res.json({ saved: false });
+      }
+      res.json({ saved: true });
+    }
   );
 });
 
 /* ================= FEED ================= */
 
 app.get("/api/feed", (req, res) => {
-  const { category } = req.query;
-
-  let sql = `
-    SELECT title, summary, category, createdAt
-    FROM news
-    WHERE createdAt > ?
-  `;
-  const params = [Date.now() - 30 * 60 * 60 * 1000];
-
-  if (category) {
-    sql += ` AND category = ?`;
-    params.push(category);
-  }
-
-  sql += ` ORDER BY id DESC LIMIT 100`;
-
-  db.all(sql, params, (_, rows) => res.json(rows));
+  db.all(
+    `SELECT title, summary, category, createdAt
+     FROM news
+     ORDER BY id DESC
+     LIMIT 100`,
+    (_, rows) => res.json(rows)
+  );
 });
 
 /* ================= START ================= */
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () =>
-  console.log("✅ news-backend running on", PORT)
+  console.log("✅ backend running on", PORT)
 );
